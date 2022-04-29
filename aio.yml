@@ -1,0 +1,145 @@
+---
+# Creación de usuario y grupo en nuestro servidor con permisos sudo
+
+# Los hosts
+- hosts: servers
+  become: true
+  #become_user: root
+
+  # Variables locales 
+  vars:
+    group_admin: "Administradores"
+    custom_hostname: "creativo"     # Establecer un hostname customizable de acuerdo a la empresa
+    users: # Una lista de objetos usuarios ( por el momento solo un usuario )
+    - username: "victor"
+      uid: "3333"
+      nombre: "Victor Rodolfo Gonzalez Galeano"
+      contrasenha: '$6$FrPp937anY3vwb.8$99Kw1tkzP.cRL4f/ZdWTYB4kEvuCPXqOhsN8GgqYrkpRhkynNNZ8Tn6pQ.0K1F9rJxaBl3VuhvtCP9EPEHG9Q/'
+  
+  tasks:  # Una lista de tareas ( 1.crear grupo, 2.crear usuario, 3.agregar al usuario a sudo y grupo administradores )  
+
+    - name: Nuevo grupo llamado Administradores 
+      ansible.builtin.group:
+        name: "{{ group_admin }}"
+        gid: 2222
+        state: present
+        system: yes   
+
+    # Creamos los usuarios establecidos en la lista de objetos de la variable vars  
+    - name: "Nuevo usuario"
+      ansible.builtin.user:
+        name: "{{ item.username }}"
+        comment: "{{ item.nombre }}"
+        uid: "{{ item.uid }}"
+        password: "{{ item.contrasenha }}"
+        createhome:  yes
+        group: "{{ group_admin }}"
+        home: /home/{{ item.username }}
+        shell: "/bin/bash" 
+      with_items: "{{ users }}"
+    
+    # Agregamos a los usuarios establecidos en la lista de objetos de la variable vars al grupo con permisos sudo y administradores
+    - name: "Agregar nuevo usuario a los grupos sudo y Administradores"
+      ansible.builtin.user:
+        name: "{{ item.username }}" 
+        shell: /bin/bash
+        groups: sudo, {{ group_admin }}
+        append: yes
+      with_items: "{{ users }}"
+
+    - name: "Update apt-get repos & cache"
+      apt:
+        update_cache: yes
+        force_apt_get: yes
+        cache_valid_time: 3600
+
+    - name: "Upgrade all apt packages"
+      apt :
+       upgrade: dist
+       force_apt_get: yes
+
+    - name: "Establecer el hostname del servidor"
+      ansible.builtin.hostname:
+        name: "{{ custom_hostname }}" 
+
+    # - name: "Actualizar el archivo /etc/hosts con el nombre del nodo"
+    #   lineinfile:
+    #     path: "/etc/hosts"
+    #     regexp: ".*\t{{ hostvars[item]['ansible_hostname']}}\t{{ hostvars[item]['ansible_hostname']}}"
+    #     line: "{{ hostvars[item]['ansible_env'].SSH_CONNECTION.split(' ')[2] }}\t{{ hostvars[item]['ansible_hostname']}}\t{{ hostvars[item]['ansible_hostname']}}"
+    #     state: present
+    #     backup: yes
+    #   register: etchostsupdate
+    #   when: ansible_hostname != "{{ item }}" or ansible_hostname == "{{ item }}"
+    #   with_items: "{{groups['servers']}}"
+
+    # - name: "Reboot"
+    #   reboot:
+
+    - name: "vim install"
+      apt:
+        name: vim
+        state: present
+
+    - name: "Agregamos el repositorio de git"
+      apt_repository:
+        repo: 'ppa:git-core/ppa'
+        state: present
+    
+    - name: Instalamos git 
+      apt: 
+        name: git
+        state: present
+        update_cache: yes
+    
+    # Agregamos configuraciones predeterminados de git 
+  
+    - name: "Add a setting to ~/.gitconfig ( user.name = Victor Rodolfo Gonzalez Galeano )"
+      git_config:
+        name: user.name
+        scope: global
+        value: "Victor Rodolfo Gonzalez Galeano"
+
+    - name: "Add a setting to ~/.gitconfig ( user.email = xcreativox@gmail.com )"
+      git_config:
+        name: user.email
+        scope: global
+        value: "xcreativox@gmail.com"  
+    
+    - name: "Add a setting to ~/.gitconfig ( color.ui = true  )"
+      git_config:
+        name: color.ui
+        scope: global
+        value: true 
+
+    - name: "Add a setting to ~/.gitconfig ( core.editor = vim )"
+      git_config:
+        name: core.editor
+        scope: global
+        value: "vim"
+
+    - name: "Add a setting to ~/.gitconfig ( init = defaultBranch = master )"
+      git_config:
+        name: init.defaultBranch
+        scope: global
+        value: "master"  
+
+    - name: "Copy the .gitconfig to /home/victor"
+      ansible.builtin.copy:
+        src: "/root/.gitconfig"
+        dest: "/home/victor/.gitconfig"
+        owner: "{{ item.username }}"
+        group: "{{ group_admin }}"
+        mode: "0664"
+      with_items: "{{ users }}"
+
+    - name: "Delete file ~/.gitconfig"
+      file:
+        path: "~/.gitconfig"
+        state: absent
+
+    - name: "Chequear si es necesario reiniciar el servidor"
+      register: reboot_required_file
+      stat:
+        path: "/var/run/reboot-required"
+        get_md5: no

@@ -1,0 +1,7 @@
+---
+
+- hosts: servers
+  gather_facts: false
+  tasks:
+    - name: "Estamos probando la conexión a los servidores" 
+    - ping:

@@ -1,0 +1,46 @@
+---
+# Creación de usuario y grupo en nuestro servidor con permisos sudo
+
+# Los hosts
+- hosts: servers
+  become: true
+  
+  # Variables locales 
+  vars:
+    group_admin: "Administradores"
+    users: # Una lista de objetos usuarios ( por el momento solo un usuario )
+    - username: "victor"
+      uid: "3333"
+      nombre: "Victor Rodolfo Gonzalez Galeano"
+      contrasenha: '$6$FrPp937anY3vwb.8$99Kw1tkzP.cRL4f/ZdWTYB4kEvuCPXqOhsN8GgqYrkpRhkynNNZ8Tn6pQ.0K1F9rJxaBl3VuhvtCP9EPEHG9Q/'
+  
+  tasks:  # Una lista de tareas ( 1.crear grupo, 2.crear usuario, 3.agregar al usuario a sudo y grupo administradores )  
+
+    - name: Nuevo grupo llamado Administradores 
+      ansible.builtin.group:
+        name: "{{ group_admin }}"
+        gid: 2222
+        state: present
+        system: yes   
+
+    # Creamos los usuarios establecidos en la lista de objetos de la variable vars  
+    - name: "Nuevo usuario"
+      ansible.builtin.user:
+        name: "{{ item.username }}"
+        comment: "{{ item.nombre }}"
+        uid: "{{ item.uid }}"
+        password: "{{ item.contrasenha }}"
+        createhome:  yes
+        group: "{{ group_admin }}"
+        home: /home/{{ item.username }}
+        shell: "/bin/bash" 
+      with_items: "{{ users }}"
+    
+    # Agregamos a los usuarios establecidos en la lista de objetos de la variable vars al grupo con permisos sudo y administradores
+    - name: Agregar nuevo usuario a los grupos sudo y Administradores
+      ansible.builtin.user:
+        name: "{{ item.username }}" 
+        shell: /bin/bash
+        groups: sudo, {{ group_admin }}
+        append: yes
+      with_items: "{{ users }}"
